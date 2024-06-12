@@ -11,6 +11,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <stack>
+#include <unordered_set>
 
 #include "concur19.hh"
 #include "tchecker/algorithms/reach/algorithm.hh"
@@ -64,6 +66,7 @@ enum algorithm_t {
   ALGO_REACH,    /*!< Reachability algorithm */
   ALGO_CONCUR19, /*!< Covering reachability algorithm over the local-time zone graph */
   ALGO_COVREACH, /*!< Covering reachability algorithm */
+  ALGO_BACKREACH,
   ALGO_NONE,     /*!< No algorithm */
 };
 
@@ -113,6 +116,8 @@ int parse_command_line(int argc, char * argv[])
           algorithm = ALGO_CONCUR19;
         else if (strcmp(optarg, "covreach") == 0)
           algorithm = ALGO_COVREACH;
+        else if (strcmp(optarg, "backreach") == 0)
+          algorithm = ALGO_BACKREACH;
         else
           throw std::runtime_error("Unknown algorithm: " + std::string(optarg));
         break;
@@ -281,6 +286,77 @@ void covreach(std::shared_ptr<tchecker::parsing::system_declaration_t> const & s
   }
 }
 
+class state_sptr_hash_t {
+public:
+  std::size_t operator() (tchecker::zg::state_sptr_t const & s) const {
+    return tchecker::zg::hash_value(*s);
+  }
+};
+
+class state_sptr_equal_t {
+public:
+  bool operator() (tchecker::zg::state_sptr_t const & s1, tchecker::zg::state_sptr_t const & s2) const {
+    return *s1 == *s2;
+  }
+};
+
+
+bool compute_backward(std::shared_ptr<tchecker::parsing::system_declaration_t> const & sysdecl, tchecker::algorithms::reach::stats_t& stats){
+  std::shared_ptr<tchecker::ta::system_t const> system = std::make_shared<tchecker::ta::system_t const>(*sysdecl);
+  std::shared_ptr<tchecker::zg::zg_t> zg{tchecker::zg::factory(system,tchecker::ts::SHARING, tchecker::zg::ELAPSED_SEMANTICS, tchecker::zg::NO_EXTRAPOLATION, block_size, table_size)};
+  boost::dynamic_bitset<> accepting_labels = system->labels(labels);
+
+  std::stack<tchecker::zg::state_sptr_t> waiting;
+  std::unordered_set<tchecker::zg::state_sptr_t, state_sptr_hash_t, state_sptr_equal_t> passed;
+  std::vector<tchecker::zg::zg_t::sst_t> v;
+
+  zg->final(accepting_labels, v);
+
+  for (auto && [status, s, t] : v) {
+    waiting.push(s);
+    passed.insert(s);
+  }
+  v.clear();
+
+  while (! waiting.empty()) {
+    tchecker::zg::const_state_sptr_t s{waiting.top()};
+    waiting.pop();
+
+    ++stats.visited_states();
+    //std::cout << *zg << std::endl;
+    if (zg->is_initial(s)) {
+      stats.reachable() = true;
+      return true;
+    }
+
+    zg->prev(s, v);
+    for (auto && [status, prev_s, t] : v) {
+      if (passed.find(prev_s) == passed.end()) {
+        waiting.push(prev_s);
+        passed.insert(prev_s);
+      }
+      ++stats.visited_transitions();
+    }
+    v.clear();
+  }
+  stats.reachable() = false;
+  return false;
+}
+
+void bwd_reach_entry(std::shared_ptr<tchecker::parsing::system_declaration_t> const & sysdecl)
+{
+  tchecker::algorithms::reach::stats_t stats;
+  stats.set_start_time();
+  compute_backward(sysdecl, stats);
+  stats.set_end_time();
+
+  std::map<std::string, std::string> m;
+  stats.attributes(m);
+  for (auto && [key, value] : m)
+    std::cout << key << " " << value << std::endl;
+}
+
+
 /*!
  \brief Main function
 */
@@ -329,6 +405,10 @@ int main(int argc, char * argv[])
       break;
     case ALGO_COVREACH:
       covreach(sysdecl);
+      break;
+    case ALGO_BACKREACH:
+      bwd_reach_entry(sysdecl);
+//      test_backreach(sysdecl);
       break;
     default:
       throw std::runtime_error("No algorithm specified");
