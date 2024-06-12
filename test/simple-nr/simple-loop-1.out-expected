@@ -1,0 +1,16 @@
+// MEMORY_MAX_RSS  xxxx
+// REACHABLE false
+// RUNNING_TIME_SECONDS  xxxx
+// VISITED_STATES 5
+// VISITED_TRANSITIONS 4
+digraph S {
+  0 [initial="true", intval="Un=1", labels="", vloc="<A>", zone="()"]
+  1 [intval="Un=2", labels="", vloc="<A>", zone="()"]
+  2 [intval="Un=3", labels="", vloc="<A>", zone="()"]
+  3 [intval="Un=4", labels="", vloc="<A>", zone="()"]
+  4 [intval="Un=5", labels="", vloc="<A>", zone="()"]
+  0 -> 1 [vedge="<P@a>"]
+  1 -> 2 [vedge="<P@a>"]
+  2 -> 3 [vedge="<P@a>"]
+  3 -> 4 [vedge="<P@a>"]
+}
